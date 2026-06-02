@@ -1,32 +1,35 @@
 {
   "expo": {
-    "name": "AskareApp",
+    "name": "Askare",
     "slug": "AskareApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Images/logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "cli": {
+      "appVersionSource": "app.json"
+    },
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/Images/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.xain.k19.AskareApp",
+      "bundleIdentifier": "com.xain.k19.Askare",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Images/logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.xain.k19.AskareApp"
+      "package": "com.xain.k19.Askare"
     },
     "web": {
       "favicon": "./assets/favicon.png"

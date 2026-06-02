@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '../../theme';
 import { PrimaryButton, InputField } from '../../components';
@@ -29,7 +29,11 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.brand}>Askare</Text>
+        <Image
+          source={require('../../../assets/Images/logo.png')}
+          style={styles.headerImage}
+          resizeMode="contain"
+        />
         <View style={styles.brandUnderline} />
       </View>
 
@@ -115,7 +119,7 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Login Link */}
         <View style={styles.bottomLink}>
-          <Text style={styles.bottomText}>Already have an account? </Text>
+          <Text style={[styles.bottomText, styles.bottomTextSpacing]}>Already have an account?</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
             <Text style={styles.bottomLinkText}>Log in</Text>
           </TouchableOpacity>
@@ -164,6 +168,12 @@ const styles = StyleSheet.create({
     backgroundColor: `${Colors.primary}40`,
     borderRadius: 1,
     marginTop: 4,
+  },
+  headerImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 8,
+    resizeMode: 'contain',
   },
   scroll: {
     flex: 1,
@@ -266,10 +276,14 @@ const styles = StyleSheet.create({
   bottomLink: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   bottomText: {
-    ...Typography.bodySmall,
+    ...Typography.bodyMedium,
     color: Colors.onSurfaceVariant,
+  },
+  bottomTextSpacing: {
+    marginRight: 6,
   },
   bottomLinkText: {
     ...Typography.labelLarge,

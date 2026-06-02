@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View } from 'react-native';
+import { View, Image, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
@@ -10,11 +10,7 @@ import {
   Manrope_700Bold,
   Manrope_800ExtraBold,
 } from '@expo-google-fonts/manrope';
-import * as SplashScreen from 'expo-splash-screen';
 import { AppNavigator } from './src/navigation/AppNavigator';
-
-// Keep splash screen visible while loading fonts
-SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -24,23 +20,51 @@ export default function App() {
     Manrope_700Bold,
     Manrope_800ExtraBold,
   });
-
-  const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded) {
-      await SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
-
   if (!fontsLoaded) {
-    return null;
+    return (
+      <SafeAreaProvider>
+        <View style={styles.splashContainer}>
+          <Image
+            source={require('./assets/Images/splash1.png')}
+            style={styles.splashTop}
+            resizeMode="contain"
+          />
+          <Image
+            source={require('./assets/Images/splash2.png')}
+            style={styles.splashBottom}
+            resizeMode="contain"
+          />
+        </View>
+      </SafeAreaProvider>
+    );
   }
 
   return (
     <SafeAreaProvider>
-      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <View style={{ flex: 1 }}>
         <StatusBar style="dark" />
         <AppNavigator />
       </View>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splashContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  splashTop: {
+    width: '60%',
+    height: 200,
+    marginTop: 20,
+  },
+  splashBottom: {
+    width: '60%',
+    height: 150,
+    marginBottom: 20,
+  },
+});

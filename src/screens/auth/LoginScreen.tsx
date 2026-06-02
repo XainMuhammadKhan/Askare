@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '../../theme';
 import { PrimaryButton, InputField } from '../../components';
@@ -39,7 +39,11 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.brand}>Askare</Text>
+        <Image
+          source={require('../../../assets/Images/appbar.png')}
+          style={styles.headerImage}
+          resizeMode="contain"
+        />
         <View style={styles.brandUnderline} />
       </View>
 
@@ -98,10 +102,10 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Sign Up Link */}
         <View style={styles.bottomLink}>
-          <Text style={styles.bottomText}>New to Askare? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-            <Text style={styles.bottomLinkText}>Create account</Text>
-          </TouchableOpacity>
+            <Text style={[styles.bottomText, styles.bottomTextSpacing]}>New to Askare?</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+              <Text style={styles.bottomLinkText}>Create account</Text>
+            </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -148,6 +152,11 @@ const styles = StyleSheet.create({
     backgroundColor: `${Colors.primary}40`,
     borderRadius: 1,
     marginTop: 4,
+  },
+  headerImage: {
+    width: '52.5%',
+    height: 90,
+    marginBottom: 8,
   },
   scroll: {
     flex: 1,
@@ -205,10 +214,14 @@ const styles = StyleSheet.create({
   bottomLink: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   bottomText: {
     ...Typography.bodyMedium,
     color: Colors.onSurfaceVariant,
+  },
+  bottomTextSpacing: {
+    marginRight: 6,
   },
   bottomLinkText: {
     ...Typography.labelLarge,
