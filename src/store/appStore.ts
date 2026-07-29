@@ -42,12 +42,29 @@ export interface PatientRecord {
   avatar?: string;
 }
 
+export interface CallSummary {
+  patient: string;
+  doctor: string;
+  diagnosis: string;
+  recommendations: string;
+  medicines: string[];
+  precautions: string[];
+  date: string;
+  time: string;
+  duration: string;
+}
+
 interface AppState {
   notifications: Notification[];
   appointments: Appointment[];
   doctors: Doctor[];
   patientRecords: PatientRecord[];
+  callSummary: CallSummary | null;
   markAllNotificationsRead: () => void;
+  setCallSummary: (summary: CallSummary) => void;
+  clearCallSummary: () => void;
+  rescheduleAppointment: (id: string, newDate: string, newTime: string) => void;
+  cancelAppointment: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -231,9 +248,35 @@ export const useAppStore = create<AppState>((set) => ({
     },
   ],
 
+  callSummary: null,
+
   markAllNotificationsRead: () => {
     set((state) => ({
       notifications: state.notifications.map((n) => ({ ...n, read: true })),
+    }));
+  },
+
+  setCallSummary: (summary: CallSummary) => {
+    set({ callSummary: summary });
+  },
+
+  clearCallSummary: () => {
+    set({ callSummary: null });
+  },
+
+  rescheduleAppointment: (id: string, newDate: string, newTime: string) => {
+    set((state) => ({
+      appointments: state.appointments.map((a) =>
+        a.id === id ? { ...a, date: newDate, time: newTime } : a
+      ),
+    }));
+  },
+
+  cancelAppointment: (id: string) => {
+    set((state) => ({
+      appointments: state.appointments.map((a) =>
+        a.id === id ? { ...a, status: 'cancelled' as const } : a
+      ),
     }));
   },
 }));

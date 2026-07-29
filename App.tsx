@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, Image, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
   Manrope_400Regular,
@@ -12,6 +13,9 @@ import {
 } from '@expo-google-fonts/manrope';
 import { AppNavigator } from './src/navigation/AppNavigator';
 
+// Keep the native splash screen visible until we explicitly hide it
+SplashScreen.preventAutoHideAsync();
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Manrope_400Regular,
@@ -20,51 +24,25 @@ export default function App() {
     Manrope_700Bold,
     Manrope_800ExtraBold,
   });
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded) {
+      // Hide the native splash screen once fonts are loaded and layout is ready
+      await SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
   if (!fontsLoaded) {
-    return (
-      <SafeAreaProvider>
-        <View style={styles.splashContainer}>
-          <Image
-            source={require('./assets/Images/splash1.png')}
-            style={styles.splashTop}
-            resizeMode="contain"
-          />
-          <Image
-            source={require('./assets/Images/splash2.png')}
-            style={styles.splashBottom}
-            resizeMode="contain"
-          />
-        </View>
-      </SafeAreaProvider>
-    );
+    // Return null while loading — the native splash stays visible
+    return null;
   }
 
   return (
     <SafeAreaProvider>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <StatusBar style="dark" />
         <AppNavigator />
       </View>
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  splashContainer: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  splashTop: {
-    width: '60%',
-    height: 200,
-    marginTop: 20,
-  },
-  splashBottom: {
-    width: '60%',
-    height: 150,
-    marginBottom: 20,
-  },
-});

@@ -11,7 +11,7 @@
       "appVersionSource": "app.json"
     },
     "splash": {
-      "image": "./assets/Images/logo.png",
+      "image": "./assets/Images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/Images/logo.png",
+        "foregroundImage": "./assets/Images/logo_adaptive.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,

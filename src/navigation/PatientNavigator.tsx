@@ -22,6 +22,7 @@ import { NotificationsScreen } from '../screens/patient/NotificationsScreen';
 import { PaymentDetailsScreen } from '../screens/patient/PaymentDetailsScreen';
 import { PaymentSuccessScreen } from '../screens/patient/PaymentSuccessScreen';
 import { VideoConsultationScreen } from '../screens/patient/VideoConsultationScreen';
+import { ConsultationSummaryScreen } from '../screens/patient/ConsultationSummaryScreen';
 import { DoctorProfileScreen } from '../screens/profile/DoctorProfileScreen';
 import { PatientInfoScreen } from '../screens/patient/PatientInfoScreen';
 import { SettingsScreen } from '../screens/profile/SettingsScreen';
@@ -81,6 +82,7 @@ export const PatientNavigator = () => (
     <Stack.Screen name="PaymentDetails" component={PaymentDetailsScreen} />
     <Stack.Screen name="PaymentSuccess" component={PaymentSuccessScreen} />
     <Stack.Screen name="VideoConsultation" component={VideoConsultationScreen} options={{ animation: 'fade' }} />
+    <Stack.Screen name="ConsultationSummary" component={ConsultationSummaryScreen} options={{ animation: 'slide_from_bottom' }} />
     <Stack.Screen name="DoctorProfile" component={DoctorProfileScreen} />
     <Stack.Screen name="PatientInfo" component={PatientInfoScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
