@@ -12,6 +12,17 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "AskCare uses your camera for live video consultations with your doctor and scanning medical reports.",
+          "microphonePermission": "AskCare uses your microphone for audio during live video consultations with your doctor.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-font"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.xain.k19.Askare",
@@ -20,7 +31,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "AskCare uses your camera for video consultations with your doctor and uploading medical reports.",
         "NSMicrophoneUsageDescription": "AskCare uses your microphone for audio during video consultations with your doctor.",
-        "NSPhotoLibraryUsageDescription": "AskCare accesses your photo library so you can attach medical reports and prescriptions."
+        "NSPhotoLibraryUsageDescription": "AskCare accesses your photo library so you can attach medical reports and prescriptions.",
+        "NSLocationWhenInUseUsageDescription": "AskCare uses your location to find nearby hospitals, clinics, and specialists."
       }
     },
     "android": {
@@ -34,7 +46,11 @@
         "android.permission.INTERNET",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false

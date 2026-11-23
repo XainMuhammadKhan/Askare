@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { io, Socket } from 'socket.io-client';
 import { Colors } from '../../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +49,7 @@ export const VideoConsultationScreen: React.FC<Props> = ({ navigation, route }) 
   const appointmentId = Number(route?.params?.appointmentId);
 
   const [permission, requestPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const [facing, setFacing] = useState<CameraType>('front');
   const [joinInfo, setJoinInfo] = useState<JoinInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,12 +102,21 @@ export const VideoConsultationScreen: React.FC<Props> = ({ navigation, route }) 
     fetchJoinInfo();
   }, [appointmentId]);
 
-  // Request camera permission automatically when screen opens
+  // Request camera & microphone permissions automatically when screen opens
   useEffect(() => {
-    if (permission && !permission.granted && permission.canAskAgain) {
-      requestPermission().catch(() => {});
-    }
-  }, [permission, requestPermission]);
+    (async () => {
+      try {
+        if (permission && !permission.granted && permission.canAskAgain) {
+          await requestPermission();
+        }
+        if (micPermission && !micPermission.granted && micPermission.canAskAgain) {
+          await requestMicPermission();
+        }
+      } catch {
+        // Ignore prompt errors
+      }
+    })();
+  }, [permission, micPermission, requestPermission, requestMicPermission]);
 
   // Call timer runs whenever room is open or demo preview is active
   useEffect(() => {
