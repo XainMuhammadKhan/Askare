@@ -12,7 +12,7 @@ import {
   Manrope_800ExtraBold,
 } from '@expo-google-fonts/manrope';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { useThemeStore } from './src/store';
+import { useAuthStore, useThemeStore } from './src/store';
 
 // Keep native splash visible only until the root component mounts
 ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
@@ -26,13 +26,18 @@ export default function App() {
     Manrope_800ExtraBold,
   });
 
+  const isAuthHydrated = useAuthStore((s) => s.isHydrated);
+  const hydrateAuth = useAuthStore((s) => s.hydrate);
   const isDark = useThemeStore((s) => s.isDark);
   const colors = useThemeStore((s) => s.colors);
+  const hydrateTheme = useThemeStore((s) => s.hydrate);
   const syncSystemScheme = useThemeStore((s) => s.syncSystemScheme);
 
   useEffect(() => {
     ExpoSplashScreen.hideAsync().catch(() => {});
-  }, []);
+    hydrateAuth();
+    hydrateTheme();
+  }, [hydrateAuth, hydrateTheme]);
 
   useEffect(() => {
     const sub = Appearance.addChangeListener(({ colorScheme }) => {
@@ -41,7 +46,7 @@ export default function App() {
     return () => sub.remove();
   }, [syncSystemScheme]);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !isAuthHydrated) {
     return (
       <View style={styles.splashFallback}>
         <StatusBar style="dark" translucent backgroundColor="transparent" />
