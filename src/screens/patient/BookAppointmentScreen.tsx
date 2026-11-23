@@ -1,163 +1,246 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Typography, BorderRadius, Spacing } from '../../theme';
-import { Header, PrimaryButton } from '../../components';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Colors, Typography, BorderRadius, Spacing } from '../../theme';
+import { Header, PrimaryButton, FilterChips, StateView } from '../../components';
+import { publicService, ConsultationType, DoctorDetail, Slot } from '../../api';
+import { useApi } from '../../hooks/useApi';
+import {
+  doctorName,
+  formatDate,
+  formatMoney,
+  formatTime,
+  initials,
+  isoDay,
+  specializationOf,
+} from '../../utils/format';
 
 type Props = { navigation: NativeStackNavigationProp<any>; route: any };
 
-const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-const timeSlots = ['09:00 AM', '10:30 AM', '11:00 AM', '01:30 PM', '04:00 PM', '06:30 PM'];
-
 export const BookAppointmentScreen: React.FC<Props> = ({ navigation, route }) => {
-  const doctor = route?.params?.doctor;
-  const now = new Date();
+  const fallbackDoctor = route?.params?.doctor as DoctorDetail | undefined;
+  const doctorId = Number(route?.params?.doctorId ?? fallbackDoctor?.id ?? 0);
 
-  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
-  const [currentYear, setCurrentYear] = useState(now.getFullYear());
-  const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
-  const [selectedTime, setSelectedTime] = useState('11:00 AM');
+  const [consultationType, setConsultationType] = useState<ConsultationType>('VIDEO');
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
+  const [reason, setReason] = useState<string>('');
 
-  const calendarDays = useMemo(() => {
-    // Monday = 0 offset
-    const firstDayOfWeek = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7;
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const today = new Date();
-    const days: (null | { day: number; isPast: boolean })[] = [];
+  const { data: fetchedDoctor } = useApi(() => publicService.doctor(doctorId), [doctorId]);
+  const doctor = fetchedDoctor ?? fallbackDoctor ?? null;
 
-    for (let i = 0; i < firstDayOfWeek; i++) days.push(null);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const isPast =
-        new Date(currentYear, currentMonth, d) <
-        new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      days.push({ day: d, isPast });
+  const {
+    data: slots,
+    loading: slotsLoading,
+    error: slotsError,
+    refresh: refreshSlots,
+  } = useApi(() => publicService.doctorSlots(doctorId, isoDay(0), isoDay(14)), [doctorId]);
+
+  // Group free slots by formatted day label
+  const groupedSlots = useMemo(() => {
+    const map = new Map<string, Slot[]>();
+    (slots ?? []).forEach((slot) => {
+      const dayLabel = formatDate(slot.startAt);
+      if (!dayLabel) return;
+      const list = map.get(dayLabel) ?? [];
+      list.push(slot);
+      map.set(dayLabel, list);
+    });
+    return map;
+  }, [slots]);
+
+  const dateChips = useMemo(() => Array.from(groupedSlots.keys()), [groupedSlots]);
+
+  useEffect(() => {
+    if (dateChips.length > 0 && (!selectedDate || !groupedSlots.has(selectedDate))) {
+      const firstDay = dateChips[0];
+      setSelectedDate(firstDay);
+      const firstSlot = groupedSlots.get(firstDay)?.[0];
+      setSelectedSlotId(firstSlot?.id ?? null);
     }
-    return days;
-  }, [currentMonth, currentYear]);
+  }, [dateChips, groupedSlots, selectedDate]);
 
-  const navigateMonth = (dir: number) => {
-    let m = currentMonth + dir;
-    let y = currentYear;
-    if (m > 11) { m = 0; y++; }
-    if (m < 0) { m = 11; y--; }
-    setCurrentMonth(m);
-    setCurrentYear(y);
-    setSelectedDay(null);
+  const slotsForSelectedDate = useMemo(
+    () => (selectedDate ? groupedSlots.get(selectedDate) ?? [] : []),
+    [groupedSlots, selectedDate]
+  );
+
+  const selectedSlot = useMemo(
+    () => slotsForSelectedDate.find((s) => s.id === selectedSlotId) ?? null,
+    [slotsForSelectedDate, selectedSlotId]
+  );
+
+  const handleSelectDate = (day: string) => {
+    setSelectedDate(day);
+    const firstSlot = groupedSlots.get(day)?.[0];
+    setSelectedSlotId(firstSlot?.id ?? null);
   };
 
-  const formattedDate = selectedDay
-    ? `${monthNames[currentMonth]} ${selectedDay}, ${currentYear}`
-    : '';
+  const handleContinue = () => {
+    if (!doctor) {
+      Alert.alert('Doctor unavailable', 'Unable to load doctor information.');
+      return;
+    }
+    if (!selectedSlot) {
+      Alert.alert('Select a Time Slot', 'Please pick an available date and time slot to continue.');
+      return;
+    }
+    navigation.navigate('PaymentDetails', {
+      doctor,
+      slot: selectedSlot,
+      consultationType,
+      reason: reason.trim() || undefined,
+    });
+  };
 
   return (
     <View style={styles.container}>
-      <Header title="Book Appointment" showBack onBack={() => navigation.goBack()} onNotification={() => navigation.navigate('Notifications')} />
+      <Header
+        title="Book Appointment"
+        showBack
+        onBack={() => navigation.goBack()}
+        onNotification={() => navigation.navigate('Notifications')}
+      />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Doctor Info */}
-        <View style={styles.doctorCard}>
-          <View style={styles.avatar}><MaterialIcons name="person" size={28} color={Colors.outlineVariant} /></View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.doctorName}>{doctor?.name || 'Dr. Pamber'}</Text>
-            <Text style={styles.doctorSpec}>{doctor?.specialty || 'Senior Clinical Consultant'}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-              <MaterialIcons name="star" size={14} color="#d97706" />
-              <Text style={{ fontSize: 12, color: Colors.onSurfaceVariant }}>
-                {doctor?.rating || '4.9'} (124 reviews)
+        {/* Doctor Summary Card */}
+        {doctor && (
+          <View style={styles.doctorCard}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials(doctor.name) || 'DR'}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.doctorName}>{doctorName(doctor.name)}</Text>
+              <Text style={styles.doctorSpec}>
+                {specializationOf(doctor)}
+                {doctor.hospital?.name ? ` • ${doctor.hospital.name}` : ''}
               </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Dynamic Calendar */}
-        <View style={styles.calendarCard}>
-          <View style={styles.calendarHeader}>
-            <Text style={styles.monthTitle}>
-              {monthNames[currentMonth]} {currentYear}
-            </Text>
-            <View style={styles.navBtns}>
-              <TouchableOpacity style={styles.navBtn} onPress={() => navigateMonth(-1)}>
-                <MaterialIcons name="chevron-left" size={22} color={Colors.onSurface} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.navBtn} onPress={() => navigateMonth(1)}>
-                <MaterialIcons name="chevron-right" size={22} color={Colors.onSurface} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={styles.dayLabels}>
-            {dayLabels.map((d) => (
-              <Text key={d} style={styles.dayLabel}>{d}</Text>
-            ))}
-          </View>
-          <View style={styles.daysGrid}>
-            {calendarDays.map((cell, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[
-                  styles.dayCell,
-                  cell && cell.day === selectedDay && styles.dayCellActive,
-                ]}
-                disabled={!cell || cell.isPast}
-                onPress={() => cell && !cell.isPast && setSelectedDay(cell.day)}
-              >
-                {cell ? (
-                  <Text
-                    style={[
-                      styles.dayText,
-                      cell.day === selectedDay && styles.dayTextActive,
-                      cell.isPast && styles.dayTextPast,
-                    ]}
-                  >
-                    {cell.day}
-                  </Text>
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Time Slots */}
-        <View style={styles.slotsSection}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 }}>
-            <MaterialIcons name="schedule" size={18} color={Colors.primary} />
-            <Text style={styles.slotsTitle}>Available Slots</Text>
-          </View>
-          <View style={styles.slotsGrid}>
-            {timeSlots.map((t) => (
-              <TouchableOpacity
-                key={t}
-                style={[styles.slot, selectedTime === t && styles.slotActive]}
-                onPress={() => setSelectedTime(t)}
-              >
-                <Text style={[styles.slotText, selectedTime === t && styles.slotTextActive]}>
-                  {t}
+              <View style={styles.ratingRow}>
+                <MaterialIcons name="star" size={14} color="#d97706" />
+                <Text style={styles.ratingText}>
+                  {doctor.rating?.average ? Number(doctor.rating.average).toFixed(1) : 'New'} (
+                  {doctor.rating?.count ?? 0} reviews)
                 </Text>
-              </TouchableOpacity>
-            ))}
+              </View>
+            </View>
           </View>
+        )}
+
+        {/* Consultation Type Selector */}
+        <Text style={styles.sectionTitle}>Consultation Mode</Text>
+        <View style={styles.typeRow}>
+          {(
+            [
+              { type: 'VIDEO' as ConsultationType, label: 'Video Call', icon: 'videocam', sub: 'Online WebRTC session' },
+              { type: 'IN_PERSON' as ConsultationType, label: 'In-Person', icon: 'local-hospital', sub: 'Visit clinic/hospital' },
+            ] as const
+          ).map((item) => {
+            const active = consultationType === item.type;
+            return (
+              <TouchableOpacity
+                key={item.type}
+                style={[styles.typeCard, active && styles.typeCardActive]}
+                onPress={() => setConsultationType(item.type)}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name={item.icon as any}
+                  size={22}
+                  color={active ? Colors.primary : Colors.onSurfaceVariant}
+                />
+                <Text style={[styles.typeLabel, active && styles.typeLabelActive]}>
+                  {item.label}
+                </Text>
+                <Text style={styles.typeSub}>{item.sub}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Fee Display */}
+        {/* Available Dates & Time Slots */}
+        <View style={styles.slotsSection}>
+          <View style={styles.sectionHeaderRow}>
+            <MaterialIcons name="event-available" size={20} color={Colors.primary} />
+            <Text style={styles.sectionTitleInline}>Available Slots (Next 14 Days)</Text>
+          </View>
+
+          <StateView
+            loading={slotsLoading}
+            error={slotsError}
+            empty={!slotsLoading && dateChips.length === 0}
+            emptyText="No free slots available for this doctor in the next 14 days."
+            onRetry={refreshSlots}
+          >
+            <View style={{ marginHorizontal: -Spacing.lg, marginBottom: Spacing.sm }}>
+              <FilterChips
+                chips={dateChips}
+                selected={selectedDate}
+                onSelect={handleSelectDate}
+              />
+            </View>
+
+            <View style={styles.slotsGrid}>
+              {slotsForSelectedDate.map((slot) => {
+                const isSelected = slot.id === selectedSlotId;
+                return (
+                  <TouchableOpacity
+                    key={slot.id}
+                    style={[styles.slot, isSelected && styles.slotActive]}
+                    onPress={() => setSelectedSlotId(slot.id)}
+                    activeOpacity={0.75}
+                  >
+                    <MaterialIcons
+                      name="schedule"
+                      size={15}
+                      color={isSelected ? Colors.primary : Colors.onSurfaceVariant}
+                    />
+                    <Text style={[styles.slotText, isSelected && styles.slotTextActive]}>
+                      {formatTime(slot.startAt)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </StateView>
+        </View>
+
+        {/* Reason / Symptoms Input */}
+        <Text style={[styles.sectionTitle, { marginTop: Spacing.xl }]}>
+          Reason for Visit (Optional)
+        </Text>
+        <TextInput
+          style={styles.reasonInput}
+          placeholder="Briefly describe your symptoms or reason for consultation..."
+          placeholderTextColor={Colors.outlineVariant}
+          value={reason}
+          onChangeText={setReason}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+
+        {/* Fee Summary */}
         <View style={styles.feeRow}>
-          <Text style={styles.feeLabel}>Total Fee</Text>
-          <Text style={styles.feeValue}>{doctor?.fee || 'PKR 5,000'}</Text>
+          <View>
+            <Text style={styles.feeLabel}>CONSULTATION FEE</Text>
+            <Text style={styles.feeHint}>Authorized on Stripe • Charged on doctor approval</Text>
+          </View>
+          <Text style={styles.feeValue}>{formatMoney(doctor?.consultationFee)}</Text>
         </View>
 
         <PrimaryButton
-          title="Confirm Appointment"
-          onPress={() =>
-            navigation.navigate('PaymentDetails', {
-              doctor,
-              date: formattedDate,
-              time: selectedTime,
-            })
-          }
-          style={{ marginTop: 12, opacity: selectedDay ? 1 : 0.5 }}
-          disabled={!selectedDay}
+          title="Continue to Payment"
+          onPress={handleContinue}
+          disabled={!selectedSlot}
+          style={{ marginTop: Spacing.lg }}
         />
       </ScrollView>
     </View>
@@ -166,32 +249,113 @@ export const BookAppointmentScreen: React.FC<Props> = ({ navigation, route }) =>
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: 16, paddingBottom: 100 },
-  doctorCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Colors.surfaceContainerLowest, borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: Colors.surfaceContainerHighest },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
-  doctorName: { fontSize: 16, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurface },
-  doctorSpec: { ...Typography.bodySmall, color: Colors.onSurfaceVariant },
-  calendarCard: { backgroundColor: Colors.surfaceContainerLowest, borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: Colors.surfaceContainerHighest },
-  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  monthTitle: { fontSize: 18, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurface },
-  navBtns: { flexDirection: 'row', gap: 4 },
-  navBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: Colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' },
-  dayLabels: { flexDirection: 'row', marginBottom: 8 },
-  dayLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurfaceVariant },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  dayCellActive: { backgroundColor: Colors.primary, borderRadius: 20 },
-  dayText: { fontSize: 14, fontFamily: 'Manrope_500Medium', color: Colors.onSurface },
-  dayTextActive: { color: Colors.onPrimary, fontFamily: 'Manrope_700Bold' },
-  dayTextPast: { color: Colors.outlineVariant },
-  slotsSection: {},
-  slotsTitle: { fontSize: 18, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurface },
-  slotsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  slot: { width: '47%', paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.surfaceContainerHighest, alignItems: 'center', backgroundColor: Colors.surfaceContainerLowest },
-  slotActive: { borderColor: Colors.primary, borderWidth: 2, backgroundColor: `${Colors.primary}08` },
-  slotText: { fontSize: 14, fontFamily: 'Manrope_500Medium', color: Colors.onSurface },
+  content: { paddingHorizontal: Spacing.lg, paddingBottom: 100 },
+  doctorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainerHighest,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: `${Colors.primary}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: 18, fontFamily: 'Manrope_700Bold', color: Colors.primary },
+  doctorName: { fontSize: 16, fontFamily: 'Manrope_700Bold', color: Colors.onSurface },
+  doctorSpec: { ...Typography.bodySmall, color: Colors.onSurfaceVariant, marginTop: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  ratingText: { fontSize: 12, color: Colors.onSurfaceVariant, fontFamily: 'Manrope_500Medium' },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.onSurface,
+    marginBottom: 10,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  sectionTitleInline: {
+    fontSize: 16,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.onSurface,
+  },
+  typeRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  typeCard: {
+    flex: 1,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: BorderRadius.md,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainerHighest,
+    gap: 4,
+  },
+  typeCardActive: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+    backgroundColor: `${Colors.primary}08`,
+  },
+  typeLabel: { fontSize: 14, fontFamily: 'Manrope_700Bold', color: Colors.onSurface },
+  typeLabelActive: { color: Colors.primary },
+  typeSub: { ...Typography.bodySmall, fontSize: 11, color: Colors.onSurfaceVariant },
+  slotsSection: { marginTop: 4 },
+  slotsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 6 },
+  slot: {
+    width: '31%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainerHighest,
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceContainerLowest,
+  },
+  slotActive: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+    backgroundColor: `${Colors.primary}10`,
+  },
+  slotText: { fontSize: 13, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurface },
   slotTextActive: { color: Colors.primary, fontFamily: 'Manrope_700Bold' },
-  feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.surfaceContainerHighest },
-  feeLabel: { fontSize: 10, fontFamily: 'Manrope_700Bold', color: Colors.onSurfaceVariant, letterSpacing: 1.5, textTransform: 'uppercase' },
-  feeValue: { fontSize: 22, fontFamily: 'Manrope_700Bold', color: Colors.onSurface },
+  reasonInput: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainerHighest,
+    padding: 14,
+    minHeight: 88,
+    fontSize: 14,
+    color: Colors.onSurface,
+    fontFamily: 'Manrope_400Regular',
+  },
+  feeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 22,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceContainerHighest,
+  },
+  feeLabel: {
+    fontSize: 10,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.onSurfaceVariant,
+    letterSpacing: 1.2,
+  },
+  feeHint: { ...Typography.bodySmall, fontSize: 11, color: Colors.onSurfaceVariant, marginTop: 2 },
+  feeValue: { fontSize: 22, fontFamily: 'Manrope_800ExtraBold', color: Colors.primary },
 });

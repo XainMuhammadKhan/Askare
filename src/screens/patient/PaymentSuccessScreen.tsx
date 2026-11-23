@@ -1,135 +1,226 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Linking,
+  Alert,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, Typography } from '../../theme';
-import { Header, PrimaryButton, SecondaryButton } from '../../components';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Colors, Typography, BorderRadius, Spacing } from '../../theme';
+import { Header, PrimaryButton, SecondaryButton } from '../../components';
+import { usePaymentPolling } from '../../features/appointments/usePaymentPolling';
+import {
+  doctorName,
+  formatDate,
+  formatMoney,
+  formatTime,
+  PAYMENT_LABEL,
+  specializationOf,
+} from '../../utils/format';
 
 type Props = { navigation: NativeStackNavigationProp<any>; route: any };
 
 export const PaymentSuccessScreen: React.FC<Props> = ({ navigation, route }) => {
-  const doctor = route?.params?.doctor;
-  const bookDate = route?.params?.date || 'Oct 24, 2026';
-  const bookTime = route?.params?.time || '10:00 AM';
-  const fee = doctor?.fee || 'PKR 5,000';
-  const doctorName = doctor?.name || 'Dr. Sarah Mansoor';
-  const doctorSpec = doctor?.specialty || 'Specialist';
+  const initialAppointmentId: number | undefined = route?.params?.appointmentId;
+  const checkoutUrl: string | undefined = route?.params?.checkoutUrl;
+  const fallbackDoctor = route?.params?.doctor;
+  const fallbackSlot = route?.params?.slot;
+  const fallbackType = route?.params?.consultationType ?? 'VIDEO';
 
-  // Generate transaction ID from booking data (matching web formula)
-  const txSeed = `${doctorName}-${bookDate}-${bookTime}`
-    .split('')
-    .reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const txId = `#ASK-${String(100000 + (txSeed % 900000)).padStart(6, '0')}`;
+  const { appointment, paymentStatus, isPolling, timedOut, error, checkNow } = usePaymentPolling({
+    appointmentId: initialAppointmentId,
+    intervalMs: 3000,
+    maxDurationMs: 30000,
+  });
+
+  const resolvedId = appointment?.id ?? initialAppointmentId;
+  const docName = doctorName(appointment?.doctor?.name ?? fallbackDoctor?.name) || 'Specialist';
+  const docSpec = fallbackDoctor ? specializationOf(fallbackDoctor) : 'Clinical Specialist';
+  const startAt = appointment?.slot?.startAt ?? fallbackSlot?.startAt;
+  const fee = formatMoney(appointment?.consultationFee ?? fallbackDoctor?.consultationFee);
+  const consultType = appointment?.consultationType ?? fallbackType;
+
+  const isAuthorized = paymentStatus === 'AUTHORIZED' || paymentStatus === 'PAID';
+  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
+
+  const handleReopenCheckout = async () => {
+    if (!checkoutUrl) {
+      Alert.alert('Checkout Unavailable', 'No Stripe checkout link is available for this session.');
+      return;
+    }
+    try {
+      await Linking.openURL(checkoutUrl);
+    } catch {
+      Alert.alert('Error', 'Unable to open Stripe checkout URL.');
+    }
+  };
 
   return (
     <View style={styles.container}>
-      <Header title="Payment Confirmation" showBack onBack={() => navigation.goBack()} onNotification={() => navigation.navigate('Notifications')} />
+      <Header
+        title="Payment Status"
+        showBack
+        onBack={() => navigation.goBack()}
+        onNotification={() => navigation.navigate('Notifications')}
+      />
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Success Icon */}
-        <View style={styles.iconOuter}>
-          <View style={styles.iconCircle}>
-            <MaterialIcons name="check" size={40} color={Colors.onPrimary} />
-          </View>
+        {/* Status Banner / Hero */}
+        <View style={styles.heroSection}>
+          {isAuthorized ? (
+            <>
+              <View style={[styles.iconCircle, { backgroundColor: Colors.primary }]}>
+                <MaterialIcons name="verified" size={42} color={Colors.onPrimary} />
+              </View>
+              <Text style={styles.title}>Payment Authorized — Request Sent to Doctor!</Text>
+              <Text style={styles.subtitle}>
+                Your card is on an escrow hold. You will only be charged once the doctor accepts
+                your appointment request.
+              </Text>
+            </>
+          ) : isFailed ? (
+            <>
+              <View style={[styles.iconCircle, { backgroundColor: Colors.error }]}>
+                <MaterialIcons name="error-outline" size={42} color={Colors.onError} />
+              </View>
+              <Text style={styles.title}>Payment Not Completed</Text>
+              <Text style={styles.subtitle}>
+                The Stripe authorization was cancelled or failed. Your card has not been charged.
+              </Text>
+            </>
+          ) : (
+            <>
+              <View style={[styles.iconCircle, { backgroundColor: '#d97706' }]}>
+                {isPolling ? (
+                  <ActivityIndicator size="large" color={Colors.white} />
+                ) : (
+                  <MaterialIcons name="hourglass-top" size={40} color={Colors.white} />
+                )}
+              </View>
+              <Text style={styles.title}>
+                {isPolling ? 'Waiting for Stripe Confirmation...' : 'Still Waiting for Payment'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {timedOut
+                  ? 'We have not detected a completed Stripe checkout yet. Complete the payment in your browser and tap "Check Now".'
+                  : 'Complete your payment authorization in the Stripe checkout tab. This page updates automatically every 3 seconds.'}
+              </Text>
+            </>
+          )}
         </View>
-        <Text style={styles.title}>Payment Successful</Text>
-        <Text style={styles.subtitle}>
-          Your appointment has been confirmed. A detailed summary has been sent to your registered email.
-        </Text>
 
-        {/* Confirmation Card */}
-        <View style={styles.detailsCard}>
-          {/* Watermark */}
-          <View style={styles.watermark}>
-            <MaterialIcons name="verified" size={100} color={Colors.outlineVariant} style={{ opacity: 0.06 }} />
+        {error ? (
+          <View style={styles.errorBanner}>
+            <MaterialIcons name="warning" size={18} color={Colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
+        ) : null}
 
-          {/* Doctor Details */}
+        {/* Pending Controls */}
+        {!isAuthorized && (
+          <View style={styles.pendingActionsCard}>
+            <PrimaryButton
+              title="I have completed payment — Check Now"
+              onPress={checkNow}
+              loading={isPolling}
+              icon={<MaterialIcons name="refresh" size={18} color={Colors.onPrimary} />}
+            />
+            {checkoutUrl ? (
+              <TouchableOpacity
+                style={styles.reopenBtn}
+                onPress={handleReopenCheckout}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="open-in-new" size={18} color={Colors.primary} />
+                <Text style={styles.reopenBtnText}>Re-open Stripe Checkout</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
+
+        {/* Booking Details Card */}
+        <View style={styles.detailsCard}>
           <View style={styles.detailSection}>
-            <Text style={styles.detailLabel}>DOCTOR DETAILS</Text>
+            <Text style={styles.detailLabel}>SPECIALIST</Text>
             <View style={styles.doctorRow}>
               <View style={styles.doctorAvatar}>
-                <MaterialIcons name="person" size={22} color={Colors.outlineVariant} />
+                <MaterialIcons name="person" size={22} color={Colors.primary} />
               </View>
-              <View>
-                <Text style={styles.doctorName}>{doctorName}</Text>
-                <Text style={styles.doctorSpec}>{doctorSpec}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.doctorName}>{docName}</Text>
+                <Text style={styles.doctorSpec}>{docSpec}</Text>
               </View>
             </View>
           </View>
 
-          {/* Schedule */}
           <View style={styles.detailSection}>
             <Text style={styles.detailLabel}>SCHEDULE</Text>
             <View style={styles.scheduleRow}>
-              <MaterialIcons name="calendar-today" size={18} color={Colors.secondary} />
-              <Text style={styles.scheduleText}>{bookDate}</Text>
+              <MaterialIcons name="calendar-today" size={17} color={Colors.secondary} />
+              <Text style={styles.scheduleText}>{formatDate(startAt) || 'Scheduled'}</Text>
               <Text style={styles.scheduleDot}>•</Text>
-              <Text style={styles.scheduleText}>{bookTime}</Text>
+              <Text style={styles.scheduleText}>{formatTime(startAt)}</Text>
             </View>
           </View>
 
-          {/* Service Type */}
           <View style={styles.detailSection}>
-            <Text style={styles.detailLabel}>SERVICE TYPE</Text>
+            <Text style={styles.detailLabel}>CONSULTATION MODE</Text>
             <View style={styles.scheduleRow}>
-              <MaterialIcons name="videocam" size={18} color={Colors.secondary} />
-              <Text style={styles.scheduleText}>Video Consultation</Text>
+              <MaterialIcons
+                name={consultType === 'VIDEO' ? 'videocam' : 'local-hospital'}
+                size={18}
+                color={Colors.secondary}
+              />
+              <Text style={styles.scheduleText}>
+                {consultType === 'VIDEO' ? 'Video Consultation' : 'In-Person Visit'}
+              </Text>
             </View>
           </View>
 
           <View style={styles.divider} />
 
-          {/* Payment Method */}
-          <View style={styles.detailSection}>
-            <Text style={styles.detailLabel}>PAYMENT METHOD</Text>
-            <View style={styles.paymentMethodRow}>
-              <View style={styles.paymentMethodLeft}>
-                <MaterialIcons name="credit-card" size={18} color={Colors.primary} />
-                <Text style={styles.paymentMethodText}>Debit Card **** 4242</Text>
-              </View>
-              <View style={styles.paymentPulse} />
-            </View>
+          <View style={styles.metaRow}>
+            <Text style={styles.metaLabel}>Appointment ID</Text>
+            <Text style={styles.metaValue}>{resolvedId ? `#${resolvedId}` : 'Pending'}</Text>
           </View>
-
-          {/* Transaction Details */}
-          <View style={styles.detailSection}>
-            <Text style={styles.detailLabel}>TRANSACTION DETAILS</Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Transaction ID</Text>
-              <Text style={styles.metaValue}>{txId}</Text>
-            </View>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Amount Paid</Text>
-              <Text style={styles.amountPaid}>{fee}</Text>
-            </View>
-          </View>
-
-          {/* Info Note */}
-          <View style={styles.infoNote}>
-            <MaterialIcons name="info" size={16} color={Colors.tertiary} />
-            <Text style={styles.infoNoteText}>
-              A receipt has been saved to your clinical vault.
+          <View style={styles.metaRow}>
+            <Text style={styles.metaLabel}>Payment Status</Text>
+            <Text
+              style={[
+                styles.metaValue,
+                { color: isAuthorized ? Colors.primary : isFailed ? Colors.error : '#d97706' },
+              ]}
+            >
+              {PAYMENT_LABEL[paymentStatus]} ({paymentStatus})
             </Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Text style={styles.metaLabel}>Authorized Amount</Text>
+            <Text style={styles.amountPaid}>{fee}</Text>
           </View>
         </View>
 
-        {/* Actions */}
-        <PrimaryButton
-          title="Go to Dashboard"
-          onPress={() => navigation.navigate('PatientTabs')}
-          style={{ marginTop: 20 }}
-        />
-        <TouchableOpacity style={styles.downloadBtn} activeOpacity={0.7}>
-          <MaterialIcons name="download" size={20} color={Colors.primary} />
-          <Text style={styles.downloadText}>Download Receipt</Text>
-        </TouchableOpacity>
+        {/* Navigation Actions */}
+        <View style={styles.navActions}>
+          {resolvedId ? (
+            <PrimaryButton
+              title="View Appointment Status"
+              onPress={() =>
+                navigation.navigate('AppointmentStatus', { appointmentId: resolvedId })
+              }
+            />
+          ) : null}
 
-        {/* Support */}
-        <View style={styles.supportRow}>
-          <Text style={styles.supportText}>Need help with your appointment? </Text>
-          <TouchableOpacity>
-            <Text style={styles.supportLink}>Contact Support</Text>
-          </TouchableOpacity>
+          <SecondaryButton
+            title="Go to My Appointments"
+            onPress={() => navigation.navigate('PatientTabs', { screen: 'Appointments' })}
+            style={{ marginTop: Spacing.sm }}
+          />
         </View>
       </ScrollView>
     </View>
@@ -138,36 +229,95 @@ export const PaymentSuccessScreen: React.FC<Props> = ({ navigation, route }) => 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: 16, paddingBottom: 100, alignItems: 'center' },
-  iconOuter: { marginVertical: 24 },
-  iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 6, borderColor: `${Colors.primary}30` },
-  title: { fontSize: 28, fontFamily: 'Manrope_700Bold', color: Colors.onSurface, marginBottom: 8 },
-  subtitle: { ...Typography.bodyLarge, color: Colors.onSurfaceVariant, textAlign: 'center', lineHeight: 24, marginBottom: 24, paddingHorizontal: 16 },
-  detailsCard: { backgroundColor: Colors.surfaceContainerLowest, borderRadius: 20, padding: 24, width: '100%', borderWidth: 1, borderColor: Colors.surfaceContainerHighest, overflow: 'hidden' },
-  watermark: { position: 'absolute', top: 10, right: 10 },
-  detailSection: { marginBottom: 20 },
-  detailLabel: { fontSize: 10, fontFamily: 'Manrope_700Bold', color: Colors.primary, letterSpacing: 1.5, marginBottom: 10 },
+  content: { paddingHorizontal: Spacing.lg, paddingBottom: 100 },
+  heroSection: { alignItems: 'center', marginVertical: 20 },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 21,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.onSurface,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    ...Typography.bodyMedium,
+    color: Colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 21,
+    paddingHorizontal: 8,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fef2f2',
+    borderRadius: BorderRadius.md,
+    padding: 12,
+    marginBottom: 14,
+  },
+  errorText: { ...Typography.bodySmall, color: Colors.error, flex: 1 },
+  pendingActionsCard: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 18,
+  },
+  reopenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: `${Colors.primary}10`,
+  },
+  reopenBtnText: {
+    ...Typography.labelLarge,
+    color: Colors.primary,
+    fontSize: 14,
+  },
+  detailsCard: {
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: Colors.surfaceContainerHighest,
+  },
+  detailSection: { marginBottom: 16 },
+  detailLabel: {
+    fontSize: 10,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.primary,
+    letterSpacing: 1.3,
+    marginBottom: 8,
+  },
   doctorRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  doctorAvatar: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
-  doctorName: { fontSize: 17, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurface },
+  doctorAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: `${Colors.primary}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doctorName: { fontSize: 16, fontFamily: 'Manrope_700Bold', color: Colors.onSurface },
   doctorSpec: { fontSize: 13, fontFamily: 'Manrope_500Medium', color: Colors.secondary, marginTop: 2 },
   scheduleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  scheduleText: { fontSize: 15, fontFamily: 'Manrope_500Medium', color: Colors.onSurface },
+  scheduleText: { fontSize: 14, fontFamily: 'Manrope_600SemiBold', color: Colors.onSurface },
   scheduleDot: { color: Colors.outlineVariant },
-  divider: { height: 1, backgroundColor: Colors.surfaceContainerHighest, marginVertical: 16 },
-  paymentMethodRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.surfaceContainerLow, borderRadius: 12, padding: 14 },
-  paymentMethodLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  paymentMethodText: { fontSize: 14, fontFamily: 'Manrope_500Medium', color: Colors.onSurface },
-  paymentPulse: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  divider: { height: 1, backgroundColor: Colors.surfaceContainerHighest, marginVertical: 14 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   metaLabel: { ...Typography.bodySmall, color: Colors.onSurfaceVariant },
-  metaValue: { fontSize: 13, fontFamily: 'Manrope_500Medium', color: Colors.onSurface },
-  amountPaid: { fontSize: 18, fontFamily: 'Manrope_700Bold', color: Colors.primary },
-  infoNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: `${Colors.tertiary}10`, borderRadius: 12, padding: 14 },
-  infoNoteText: { fontSize: 12, fontFamily: 'Manrope_500Medium', color: Colors.onSurface, flex: 1 },
-  downloadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Colors.surfaceContainerHigh, borderRadius: 16, paddingVertical: 16, width: '100%', marginTop: 12 },
-  downloadText: { fontSize: 16, fontFamily: 'Manrope_600SemiBold', color: Colors.primary },
-  supportRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, flexWrap: 'wrap', justifyContent: 'center' },
-  supportText: { fontSize: 13, fontFamily: 'Manrope_500Medium', color: Colors.secondary },
-  supportLink: { fontSize: 13, fontFamily: 'Manrope_600SemiBold', color: Colors.primary, textDecorationLine: 'underline' },
+  metaValue: { fontSize: 13, fontFamily: 'Manrope_700Bold', color: Colors.onSurface },
+  amountPaid: { fontSize: 17, fontFamily: 'Manrope_800ExtraBold', color: Colors.primary },
+  navActions: { width: '100%', marginTop: 20 },
 });

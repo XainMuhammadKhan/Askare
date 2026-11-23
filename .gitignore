@@ -3,39 +3,58 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo & build outputs
 .expo/
+.expo-shared/
 dist/
+build/
 web-build/
 expo-env.d.ts
+*.apk
+*.aab
+*.ipa
+*.tar.gz
 
-# Native
+# Native & Signing Credentials (NEVER commit)
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
+*.cer
+*.cert
 *.mobileprovision
+credentials.json
+google-play-key.json
+service-account*.json
 
 # Metro
 .metro-health-check*
 
-# debug
+# Debug & Logs
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
 
-# macOS
+# OS & Editor local files
 .DS_Store
+Thumbs.db
 *.pem
+.vscode/
+.idea/
 
-# local env files
-.env*.local
+# Local environment & extracted API docs/samples
+.env
+.env.*
+!.env.example
+docs/
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 
-# generated native folders
+# Generated native folders
 /ios
 /android

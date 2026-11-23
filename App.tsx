@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, Image, StyleSheet, Appearance } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as SplashScreen from 'expo-splash-screen';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import {
   useFonts,
   Manrope_400Regular,
@@ -12,9 +12,10 @@ import {
   Manrope_800ExtraBold,
 } from '@expo-google-fonts/manrope';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { useThemeStore } from './src/store';
 
-// Keep the native splash screen visible until we explicitly hide it
-SplashScreen.preventAutoHideAsync();
+// Keep native splash visible only until the root component mounts
+ExpoSplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -25,24 +26,52 @@ export default function App() {
     Manrope_800ExtraBold,
   });
 
-  const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded) {
-      // Hide the native splash screen once fonts are loaded and layout is ready
-      await SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
+  const isDark = useThemeStore((s) => s.isDark);
+  const colors = useThemeStore((s) => s.colors);
+  const syncSystemScheme = useThemeStore((s) => s.syncSystemScheme);
+
+  useEffect(() => {
+    ExpoSplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const sub = Appearance.addChangeListener(({ colorScheme }) => {
+      syncSystemScheme(colorScheme);
+    });
+    return () => sub.remove();
+  }, [syncSystemScheme]);
 
   if (!fontsLoaded) {
-    // Return null while loading — the native splash stays visible
-    return null;
+    return (
+      <View style={styles.splashFallback}>
+        <StatusBar style="dark" translucent backgroundColor="transparent" />
+        <Image
+          source={require('./assets/Images/splash.png')}
+          style={styles.splashImage}
+          resizeMode="cover"
+        />
+      </View>
+    );
   }
 
   return (
     <SafeAreaProvider>
-      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-        <StatusBar style="dark" />
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <AppNavigator />
       </View>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splashFallback: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  splashImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+});

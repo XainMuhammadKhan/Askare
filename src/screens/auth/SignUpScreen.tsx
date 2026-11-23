@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../../theme';
-import { PrimaryButton, InputField } from '../../components';
-import { useAuthStore, UserRole } from '../../store';
+import { PrimaryButton, InputField, RoleToggle } from '../../components';
+import { authService, Specialization, UserRole } from '../../api';
+import { useApi } from '../../hooks/useApi';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type Props = {
@@ -11,23 +11,71 @@ type Props = {
 };
 
 export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
+  const [role, setRole] = useState<UserRole>('patient');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('patient');
-  const signup = useAuthStore((s) => s.signup);
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [experience, setExperience] = useState('');
+  const [consultationFee, setConsultationFee] = useState('');
+  const [selectedSpecs, setSelectedSpecs] = useState<number[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const handleSignUp = () => {
-    signup(name, email, password, role);
+  const { data: specs } = useApi<Specialization[]>(() => authService.specializations(), []);
+
+  const toggleSpec = (id: number) => {
+    setSelectedSpecs((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  };
+
+  const handleSignUp = async () => {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanName || !cleanEmail || !password) {
+      Alert.alert('Missing fields', 'Please enter your full name, email address, and password.');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Weak password', 'Password must be at least 6 characters long.');
+      return;
+    }
+    if (role === 'doctor' && selectedSpecs.length === 0) {
+      Alert.alert('Specialization required', 'Please select at least one specialization.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const userType = role === 'doctor' ? 'doctor' : 'patient';
+      const payload: any = {
+        userType,
+        name: cleanName,
+        email: cleanEmail,
+        password,
+        phone: phone.trim() || undefined,
+      };
+      if (userType === 'doctor') {
+        payload.specializationIds = selectedSpecs;
+        if (licenseNumber.trim()) payload.licenseNumber = licenseNumber.trim();
+        if (experience.trim()) payload.experience = Number(experience) || undefined;
+        if (consultationFee.trim()) payload.consultationFee = Number(consultationFee) || undefined;
+      }
+
+      await authService.register(payload);
+      Alert.alert('Verification code sent', `We sent a 6-digit OTP to ${cleanEmail}.`);
+      navigation.navigate('VerifyOtp', { email: cleanEmail, userType });
+    } catch (e: any) {
+      Alert.alert('Sign up failed', e?.message ?? 'Could not create your account. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-      {/* Background Decoration */}
       <View style={styles.bgAccent1} />
       <View style={styles.bgAccent2} />
 
-      {/* Header */}
       <View style={styles.header}>
         <Image
           source={require('../../../assets/Images/logo.png')}
@@ -43,37 +91,17 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Hero */}
         <Text style={styles.heading}>Begin your wellness{'\n'}journey</Text>
         <Text style={styles.subtitle}>
           Join a premium community dedicated to refined healthcare standards.
         </Text>
 
-        {/* Role Selector */}
         <Text style={styles.roleLabel}>SELECT YOUR ROLE TO CONTINUE</Text>
-        <View style={styles.roleToggle}>
-          <TouchableOpacity
-            style={[styles.roleBtn, role === 'patient' && styles.roleBtnActive]}
-            onPress={() => setRole('patient')}
-          >
-            <Text style={[styles.roleBtnText, role === 'patient' && styles.roleBtnTextActive]}>
-              Patient
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.roleBtn, role === 'doctor' && styles.roleBtnActive]}
-            onPress={() => setRole('doctor')}
-          >
-            <Text style={[styles.roleBtnText, role === 'doctor' && styles.roleBtnTextActive]}>
-              Doctor
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <RoleToggle value={role} onChange={setRole} />
 
-        {/* Form */}
         <InputField
           label="FULL NAME"
-          placeholder="Dr. John Doe"
+          placeholder={role === 'doctor' ? 'Dr. Ayesha Siddiqui' : 'Ahmed Raza'}
           value={name}
           onChangeText={setName}
         />
@@ -85,6 +113,13 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           keyboardType="email-address"
         />
         <InputField
+          label="PHONE (OPTIONAL)"
+          placeholder="03001234567"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+        />
+        <InputField
           label="PASSWORD"
           placeholder="••••••••"
           value={password}
@@ -92,32 +127,62 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
           secureTextEntry
         />
 
+        {role === 'doctor' && (
+          <View style={styles.doctorSection}>
+            <InputField
+              label="PMDC / LICENSE NUMBER"
+              placeholder="PMDC-10000"
+              value={licenseNumber}
+              onChangeText={setLicenseNumber}
+            />
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  label="EXPERIENCE (YRS)"
+                  placeholder="10"
+                  value={experience}
+                  onChangeText={setExperience}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  label="FEE (PKR)"
+                  placeholder="2000"
+                  value={consultationFee}
+                  onChangeText={setConsultationFee}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.specTitle}>SPECIALIZATIONS</Text>
+            <View style={styles.specChips}>
+              {(specs ?? []).map((sp) => {
+                const active = selectedSpecs.includes(sp.id);
+                return (
+                  <TouchableOpacity
+                    key={sp.id}
+                    style={[styles.specChip, active && styles.specChipActive]}
+                    onPress={() => toggleSpec(sp.id)}
+                  >
+                    <Text style={[styles.specChipText, active && styles.specChipTextActive]}>
+                      {sp.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         <PrimaryButton
           title="Create Profile"
           onPress={handleSignUp}
+          loading={loading}
           style={{ marginTop: Spacing.sm }}
         />
 
-        {/* Divider */}
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>CONTINUE WITH</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Social */}
-        <View style={styles.socialRow}>
-          <TouchableOpacity style={styles.socialBtn}>
-            <MaterialIcons name="language" size={16} color={Colors.google} />
-            <Text style={styles.socialText}>Google</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.socialBtn}>
-            <MaterialIcons name="facebook" size={16} color={Colors.facebook} />
-            <Text style={styles.socialText}>Facebook</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Login Link */}
         <View style={styles.bottomLink}>
           <Text style={[styles.bottomText, styles.bottomTextSpacing]}>Already have an account?</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
@@ -130,10 +195,7 @@ export const SignUpScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
   bgAccent1: {
     position: 'absolute',
     top: '-10%',
@@ -152,16 +214,7 @@ const styles = StyleSheet.create({
     borderRadius: 200,
     backgroundColor: `${Colors.tertiaryContainer}10`,
   },
-  header: {
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 8,
-  },
-  brand: {
-    fontSize: 24,
-    fontFamily: 'Manrope_700Bold',
-    color: Colors.primary,
-  },
+  header: { alignItems: 'center', paddingTop: 50, paddingBottom: 8 },
   brandUnderline: {
     width: 40,
     height: 2,
@@ -169,126 +222,64 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     marginTop: 4,
   },
-  headerImage: {
-    width: 120,
-    height: 120,
-    marginBottom: 8,
-    resizeMode: 'contain',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 32,
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
+  headerImage: { width: 96, height: 96, marginBottom: 4, resizeMode: 'contain' },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 32, paddingTop: 12, paddingBottom: 40 },
   heading: {
-    fontSize: 28,
-    fontFamily: 'Manrope_500Medium',
+    fontSize: 26,
+    fontFamily: 'Manrope_600SemiBold',
     color: Colors.onSurface,
     textAlign: 'center',
-    marginBottom: Spacing.sm,
-    lineHeight: 36,
+    marginBottom: Spacing.xs,
+    lineHeight: 34,
   },
   subtitle: {
     ...Typography.bodyMedium,
     color: Colors.onSurfaceVariant,
     textAlign: 'center',
-    marginBottom: Spacing['2xl'],
-    opacity: 0.8,
+    marginBottom: Spacing.xl,
   },
   roleLabel: {
     ...Typography.labelSmall,
     color: Colors.outline,
     textAlign: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
-  roleToggle: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surfaceContainerLow,
-    borderRadius: BorderRadius.xl,
-    padding: 4,
-    marginBottom: Spacing['2xl'],
-  },
-  roleBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: BorderRadius.lg,
-  },
-  roleBtnActive: {
-    backgroundColor: Colors.surfaceContainerLowest,
-    shadowColor: 'rgba(0,0,0,0.08)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  roleBtnText: {
-    ...Typography.labelLarge,
-    color: Colors.onSurfaceVariant,
-    fontSize: 14,
-    textTransform: 'none',
-  },
-  roleBtnTextActive: {
-    color: Colors.primary,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginVertical: Spacing['2xl'],
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.surfaceContainerHighest,
-  },
-  dividerText: {
+  doctorSection: { marginTop: Spacing.xs, marginBottom: Spacing.md },
+  row: { flexDirection: 'row', gap: Spacing.md },
+  specTitle: {
     ...Typography.labelSmall,
-    color: Colors.outline,
-    fontSize: 9,
+    color: Colors.onSurfaceVariant,
+    marginBottom: Spacing.sm,
+    letterSpacing: 1,
   },
-  socialRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing['2xl'],
-  },
-  socialBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: BorderRadius.xl,
+  specChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
+  specChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surfaceContainerLow,
     borderWidth: 1,
-    borderColor: Colors.surfaceContainer,
+    borderColor: Colors.surfaceContainerHighest,
   },
-  socialText: {
-    ...Typography.labelLarge,
-    color: Colors.onSurface,
-    fontSize: 12,
-    textTransform: 'none',
+  specChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
+  specChipText: { ...Typography.labelMedium, color: Colors.onSurfaceVariant, textTransform: 'none' },
+  specChipTextActive: { color: Colors.onPrimary },
   bottomLink: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: Spacing['2xl'],
   },
-  bottomText: {
-    ...Typography.bodyMedium,
-    color: Colors.onSurfaceVariant,
-  },
-  bottomTextSpacing: {
-    marginRight: 6,
-  },
+  bottomText: { ...Typography.bodyMedium, color: Colors.onSurfaceVariant },
+  bottomTextSpacing: { marginRight: 6 },
   bottomLinkText: {
     ...Typography.labelLarge,
     color: Colors.primary,
-    fontSize: 12,
+    fontSize: 13,
     textTransform: 'none',
   },
 });

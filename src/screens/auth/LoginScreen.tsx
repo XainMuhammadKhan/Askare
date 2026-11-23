@@ -2,33 +2,48 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius } from '../../theme';
-import { PrimaryButton, InputField } from '../../components';
-import { useAuthStore } from '../../store';
+import { PrimaryButton, InputField, RoleToggle } from '../../components';
+import { useAuthStore, UserRole } from '../../store';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
 };
 
+/** Backend demo accounts — handy during the presentation. */
+const DEMO_ACCOUNTS: Record<UserRole, string> = {
+  patient: 'ahmed.raza@demo.askcare.test',
+  doctor: 'ayesha.siddiqui@demo.askcare.test',
+  admin: '', // ask the backend owner for admin credentials
+};
+const DEMO_PASSWORD = 'Demo@12345';
+
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
-  // prefilled for quick testing
-  const [email, setEmail] = useState('xain@gmail.com');
-  const [password, setPassword] = useState('xaink123');
+  const [role, setRole] = useState<UserRole>('patient');
+  const [email, setEmail] = useState(DEMO_ACCOUNTS.patient);
+  const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [loading, setLoading] = useState(false);
   const login = useAuthStore((s) => s.login);
 
-  const handleLogin = () => {
-    // Hardcoded test credential checks
-    if (email === 'xain@gmail.com' && password === 'xaink123') {
-      login(email, password, 'patient');
+  const changeRole = (next: UserRole) => {
+    setRole(next);
+    setEmail(DEMO_ACCOUNTS[next]);
+    setPassword(DEMO_ACCOUNTS[next] ? DEMO_PASSWORD : '');
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Missing details', 'Please enter your email and password.');
       return;
     }
-
-    if (email === 'doc@gmail.com' && password === 'doc123') {
-      login(email, password, 'doctor');
-      return;
+    setLoading(true);
+    try {
+      await login(email, password, role);
+    } catch (e: any) {
+      Alert.alert('Sign in failed', e.message);
+    } finally {
+      setLoading(false);
     }
-
-    Alert.alert('Sign in failed', 'Use test credentials: xain@gmail.com / xaink123 (patient) or doc@gmail.com / doc123 (doctor)');
   };
 
   return (
@@ -56,6 +71,8 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
         {/* Heading */}
         <Text style={styles.heading}>Welcome back</Text>
 
+        <RoleToggle value={role} onChange={changeRole} includeAdmin />
+
         {/* Form */}
         <InputField
           label="EMAIL ADDRESS"
@@ -78,6 +95,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
         <PrimaryButton
           title="Sign In"
           onPress={handleLogin}
+          loading={loading}
           style={{ marginTop: Spacing.sm, borderRadius: BorderRadius.xl }}
         />
 

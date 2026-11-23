@@ -11,6 +11,16 @@ import { DoctorDashboardScreen } from '../screens/doctor/DoctorDashboardScreen';
 import { PatientRecordsScreen } from '../screens/doctor/PatientRecordsScreen';
 import { AppointmentsScreen } from '../screens/patient/AppointmentsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { DoctorAppointmentScreen } from '../screens/doctor/DoctorAppointmentScreen';
+import { PatientDetailScreen } from '../screens/doctor/PatientDetailScreen';
+import { VideoConsultationScreen } from '../screens/patient/VideoConsultationScreen';
+
+// Doctor Extra Screens
+import { ScheduleScreen } from '../screens/doctor/extras/ScheduleScreen';
+import { DoctorCalendarScreen } from '../screens/doctor/extras/DoctorCalendarScreen';
+import { EarningsScreen } from '../screens/doctor/extras/EarningsScreen';
+import { DoctorReviewsScreen } from '../screens/doctor/extras/DoctorReviewsScreen';
+import { DoctorDocumentsScreen } from '../screens/doctor/extras/DoctorDocumentsScreen';
 
 // Shared Stack Screens
 import { NotificationsScreen } from '../screens/patient/NotificationsScreen';
@@ -63,6 +73,14 @@ const DoctorTabs = () => {
 export const DoctorNavigator = () => (
   <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
     <Stack.Screen name="DoctorTabs" component={DoctorTabs} />
+    <Stack.Screen name="DoctorAppointment" component={DoctorAppointmentScreen} />
+    <Stack.Screen name="PatientDetail" component={PatientDetailScreen} />
+    <Stack.Screen name="VideoConsultation" component={VideoConsultationScreen} options={{ animation: 'fade' }} />
+    <Stack.Screen name="Schedule" component={ScheduleScreen} />
+    <Stack.Screen name="DoctorCalendar" component={DoctorCalendarScreen} />
+    <Stack.Screen name="Earnings" component={EarningsScreen} />
+    <Stack.Screen name="DoctorReviews" component={DoctorReviewsScreen} />
+    <Stack.Screen name="DoctorDocuments" component={DoctorDocumentsScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
     <Stack.Screen name="DoctorInfo" component={DoctorInfoScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />

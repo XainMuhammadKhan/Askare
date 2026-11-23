@@ -1,4 +1,4 @@
-name: "Build & Release"
+name: "CI/CD — Build, Sign & Release (Play Store + App Store)"
 
 on:
   push:
@@ -6,52 +6,165 @@ on:
       - main
       - master
       - develop
+    tags:
+      - "v*.*.*"
   pull_request:
     branches:
       - main
       - master
+      - develop
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS Build Profile (preview | production)"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - preview
+          - production
+      submit_to_stores:
+        description: "Submit signed builds to Google Play & App Store Connect (requires store credentials)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
-jobs:
-  build:
-    name: Build & Release
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-      - uses: actions/setup-node@v4
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Fast Quality Gate (Runs on every push & PR on ubuntu-latest)
+  # ---------------------------------------------------------------------------
+  verify:
+    name: TypeScript & Config Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
+      - name: Run TypeScript compiler check
+        run: npx tsc --noEmit -p .
 
-      - name: Log in to Expo
-        run: eas whoami || eas login --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+  # ---------------------------------------------------------------------------
+  # 2. Build, Sign & Release Artifacts (Runs on pushes, tags & manual trigger)
+  #    - Android Signed APK (direct install for testers / FYP evaluation)
+  #    - Android Signed Play Store AAB (Google Play Console ready)
+  #    - iOS Build (Signed IPA when Apple credentials exist, or Simulator .tar.gz fallback)
+  # ---------------------------------------------------------------------------
+  build_and_release:
+    name: Build & Sign Mobile Releases
+    needs: verify
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_NO_VCS: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Build Android APK (local)
-        run: eas build --platform android --profile preview --local --output build/app-release.apk --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
 
-      - name: Build iOS simulator build (local, no signing needed)
-        run: eas build --platform ios --profile preview --local --output build/app-simulator.tar.gz --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: Setup Java 17 (required for Android Gradle & AAB signing)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
 
-      # Only create a GitHub Release on actual pushes to main/master/develop,
-      # not on pull requests — PRs just need the build to succeed as a check.
-      - name: Push to Releases
-        if: github.event_name == 'push'
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo & EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Verify EAS authentication
+        run: |
+          mkdir -p build
+          eas whoami
+
+      # 1) Signed Android APK for direct device installation / FYP submission
+      - name: Build Signed Android APK
+        run: |
+          eas build --platform android --profile production-apk --local --output build/AskCare-release.apk --non-interactive
+
+      # 2) Signed Android App Bundle (.aab) for Google Play Store upload
+      - name: Build Signed Android App Bundle (AAB for Play Store)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') || github.event.inputs.profile == 'production'
+        run: |
+          eas build --platform android --profile production --local --output build/AskCare-playstore.aab --non-interactive
+
+      # 3) iOS Build:
+      #    If Apple Distribution credentials are configured in EAS / secrets, build signed production .ipa for App Store Connect.
+      #    Otherwise, automatically build the iOS Simulator bundle (.tar.gz) so the CI pipeline always succeeds.
+      - name: Build iOS Artifact (Signed IPA or Simulator Bundle)
+        run: |
+          if [ "${{ secrets.IOS_STORE_SIGNING_ENABLED }}" = "true" ]; then
+            echo "Building signed iOS production IPA for App Store Connect..."
+            eas build --platform ios --profile production --local --output build/AskCare-appstore.ipa --non-interactive
+          else
+            echo "Building iOS Simulator bundle..."
+            eas build --platform ios --profile preview --local --output build/AskCare-ios-simulator.tar.gz --non-interactive
+          fi
+
+      - name: Upload Build Artifacts to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: AskCare-Mobile-Builds-${{ github.run_number }}
+          path: build/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "build/app-release.apk,build/app-simulator.tar.gz"
+          artifacts: "build/*"
           tag: v1.0.${{ github.run_number }}
+          name: "AskCare v1.0.${{ github.run_number }}"
+          body: |
+            ### AskCare Mobile Release (v1.0.${{ github.run_number }})
+            - **AskCare-release.apk**: Signed Android APK for direct installation on Android devices.
+            - **AskCare-playstore.aab**: Signed Android App Bundle ready for Google Play Console upload.
+            - **AskCare-appstore.ipa / AskCare-ios-simulator.tar.gz**: iOS build artifact.
+          allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Optional automated store submission when triggered with submit_to_stores=true
+      - name: Submit Android AAB to Google Play Store
+        if: github.event.inputs.submit_to_stores == 'true'
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          if [ -n "$GOOGLE_SERVICE_ACCOUNT_KEY" ]; then
+            echo "$GOOGLE_SERVICE_ACCOUNT_KEY" > google-play-key.json
+            eas submit --platform android --path build/AskCare-playstore.aab --non-interactive
+            rm -f google-play-key.json
+          fi
+
+      - name: Submit iOS IPA to App Store Connect (TestFlight)
+        if: github.event.inputs.submit_to_stores == 'true'
+        env:
+          IOS_STORE_SIGNING_ENABLED: ${{ secrets.IOS_STORE_SIGNING_ENABLED }}
+        run: |
+          if [ "$IOS_STORE_SIGNING_ENABLED" = "true" ]; then
+            eas submit --platform ios --path build/AskCare-appstore.ipa --non-interactive
+          fi

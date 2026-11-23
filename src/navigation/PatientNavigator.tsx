@@ -31,6 +31,9 @@ import { EmailSubscriptionScreen } from '../screens/profile/EmailSubscriptionScr
 import { HelpSupportScreen } from '../screens/profile/HelpSupportScreen';
 import { PrivacyPolicyScreen } from '../screens/profile/PrivacyPolicyScreen';
 import { TermsOfUseScreen } from '../screens/profile/TermsOfUseScreen';
+import { PaymentHistoryScreen } from '../screens/patient/extras/PaymentHistoryScreen';
+import { HealthReportScreen } from '../screens/patient/extras/HealthReportScreen';
+import { MyDocumentsScreen } from '../screens/patient/extras/MyDocumentsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -91,6 +94,9 @@ export const PatientNavigator = () => (
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
     <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
     <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />
+    <Stack.Screen name="PaymentHistory" component={PaymentHistoryScreen} />
+    <Stack.Screen name="HealthReport" component={HealthReportScreen} />
+    <Stack.Screen name="MyDocuments" component={MyDocumentsScreen} />
   </Stack.Navigator>
 );
 
